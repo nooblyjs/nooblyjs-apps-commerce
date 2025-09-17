@@ -142,9 +142,36 @@ module.exports = (options, eventEmitter, services) => {
   // Get product by ID
   app.get(`/applications/${app_path}/api/products/:id`, async (req, res) => {
     try {
-      const product = await dataServe.getByUuid('products', req.params.id);
+      logger.info(`Fetching product with ID: ${req.params.id}`);
 
-      if (!product || product.status !== 'active') {
+      // Try to find product by UUID first
+      let product = await dataServe.getByUuid('products', req.params.id);
+
+      // If not found by UUID, try to find by any field that might match
+      if (!product) {
+        logger.info(`Product not found by UUID, trying alternative searches...`);
+
+        // Try finding by ID property
+        const allProducts = await dataServe.jsonFind('products', () => true);
+        product = allProducts.find(p => p.id === req.params.id);
+
+        if (!product) {
+          // Try finding by SKU as a last resort
+          product = allProducts.find(p => p.sku === req.params.id);
+        }
+
+        logger.info(`Alternative search result: ${product ? 'found' : 'not found'}`);
+      }
+
+      logger.info(`Product found: ${product ? 'yes' : 'no'}, Status: ${product?.status || 'N/A'}`);
+
+      if (!product) {
+        logger.warn(`Product not found in database: ${req.params.id}`);
+        return res.status(404).json({ error: 'Product not found' });
+      }
+
+      if (product.status !== 'active') {
+        logger.warn(`Product found but not active: ${req.params.id}, status: ${product.status}`);
         return res.status(404).json({ error: 'Product not found' });
       }
 
@@ -191,6 +218,22 @@ module.exports = (options, eventEmitter, services) => {
     } catch (error) {
       logger.error('Error in debug route:', error);
       res.status(500).json({ error: 'Debug failed', details: error.message });
+    }
+  });
+
+  // Trigger manual seeding (for debugging)
+  app.post(`/applications/${app_path}/api/debug/seed`, async (req, res) => {
+    try {
+      const SeedService = require('../services/seedService');
+      const seedService = new SeedService(services);
+
+      await seedService.seedAll();
+      logger.info('Manual seeding completed');
+
+      res.json({ message: 'Seeding completed successfully' });
+    } catch (error) {
+      logger.error('Error in manual seeding:', error);
+      res.status(500).json({ error: 'Seeding failed', details: error.message });
     }
   });
 

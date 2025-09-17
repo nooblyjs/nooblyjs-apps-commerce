@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NooblyJS Store - Premium Products for Modern Living</title>
-    <link rel="stylesheet" href="css/ecommerce.css">
+    <link rel="stylesheet" href="css/fallback.css">
+    <link rel="stylesheet" href="css/shadcn-ecommerce.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://js.stripe.com/v3/"></script>
@@ -23,33 +24,33 @@
             </a>
 
             <!-- Search -->
-            <div class="search-container">
-                <form class="search-form" id="searchForm">
-                    <input type="text" class="search-input" placeholder="Search products..." id="searchInput">
-                    <button type="submit" class="search-btn">
+            <div class="flex items-center">
+                <form class="flex gap-2" id="searchForm">
+                    <input type="text" class="input" placeholder="Search products..." id="searchInput">
+                    <button type="submit" class="btn btn-secondary">
                         <i class="fas fa-search"></i>
                     </button>
                 </form>
             </div>
 
             <!-- Navigation -->
-            <nav class="nav-menu">
-                <a href="#" class="nav-link active" data-page="home">Home</a>
+            <nav class="nav flex gap-4">
+                <a href="#" class="nav-link" data-page="home">Home</a>
                 <a href="#" class="nav-link" data-page="categories">Categories</a>
                 <a href="#" class="nav-link" data-page="products">Products</a>
                 <a href="#" class="nav-link" data-page="about">About</a>
             </nav>
 
             <!-- User Actions -->
-            <div class="user-actions">
-                <button class="action-btn" id="cartBtn">
+            <div class="header-actions">
+                <button class="btn btn-ghost cart-icon" id="cartIcon">
                     <i class="fas fa-shopping-cart"></i>
-                    <span class="cart-count" id="cartCount">0</span>
+                    <span class="cart-count" data-cart-count>0</span>
                 </button>
-                <button class="action-btn" id="userBtn">
+                <button class="btn btn-ghost" id="userBtn">
                     <i class="fas fa-user"></i>
                 </button>
-                <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                <button class="btn btn-ghost md:hidden" id="mobileMenuToggle">
                     <i class="fas fa-bars"></i>
                 </button>
             </div>
@@ -99,6 +100,15 @@
                                 <span>Home & Garden</span>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Category Navigation -->
+            <section class="py-6 border-b">
+                <div class="container">
+                    <div class="flex flex-wrap gap-2 justify-center" id="categoriesNav">
+                        <!-- Category buttons will be loaded here -->
                     </div>
                 </div>
             </section>
@@ -497,6 +507,6 @@
     <div class="overlay" id="overlay"></div>
 
     <!-- Scripts -->
-    <script src="js/ecommerce.js"></script>
+    <script src="js/shadcn-ecommerce.js"></script>
 </body>
 </html>
