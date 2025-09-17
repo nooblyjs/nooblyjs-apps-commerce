@@ -40,18 +40,6 @@ module.exports = (options, eventEmitter, serviceRegistry) => {
   const workflow = serviceRegistry.workflow('memory');
   const scheduling = serviceRegistry.scheduling('memory');
 
-  // Initialize eCommerce data containers
-  initializeDataContainers(dataServe, logger);
-
-  // Initialize services
-  const SeedService = require('./services/seedService');
-  const seedService = new SeedService(services);
-
-  // Seed initial data
-  seedService.seedAll().catch(error => {
-    logger.error('Failed to seed initial data:', error);
-  });
-
   // Set up services object for routes and views
   const services = {
     dataManager,
@@ -66,6 +54,27 @@ module.exports = (options, eventEmitter, serviceRegistry) => {
     workflow,
     scheduling
   };
+
+  // Initialize eCommerce data containers
+  initializeDataContainers(dataServe, logger);
+
+  // Initialize services
+  const SeedService = require('./services/seedService');
+  const seedService = new SeedService(services);
+
+  // Initialize job processor
+  const JobProcessor = require('./services/jobProcessor');
+  const jobProcessor = new JobProcessor(services);
+
+  // Start background job processing
+  jobProcessor.startProcessing().catch(error => {
+    logger.error('Failed to start job processor:', error);
+  });
+
+  // Seed initial data
+  seedService.seedAll().catch(error => {
+    logger.error('Failed to seed initial data:', error);
+  });
 
   // Register routes and views
   Routes(options, eventEmitter, services);
@@ -94,7 +103,9 @@ async function initializeDataContainers(dataServe, logger) {
     'addresses',
     'payment_methods',
     'promotions',
-    'analytics'
+    'analytics',
+    'content',
+    'email_logs'
   ];
 
   for (const container of containers) {

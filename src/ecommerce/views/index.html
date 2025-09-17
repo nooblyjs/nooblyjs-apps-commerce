@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="css/ecommerce.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://js.stripe.com/v3/"></script>
     <meta name="description" content="Discover premium products for modern living. Free shipping, easy returns, and exceptional customer service.">
 </head>
 <body>
@@ -327,6 +328,110 @@
                     </div>
                     <button type="submit" class="btn btn-primary btn-full">Register</button>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checkout Modal -->
+    <div class="modal-overlay" id="checkoutModalOverlay">
+        <div class="modal large" id="checkoutModal">
+            <div class="modal-header">
+                <h2>Secure Checkout</h2>
+                <button class="modal-close" id="checkoutModalClose">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="checkout-container">
+                    <!-- Order Summary -->
+                    <div class="checkout-summary">
+                        <h3>Order Summary</h3>
+                        <div id="checkoutItems">
+                            <!-- Cart items will be displayed here -->
+                        </div>
+                        <div class="checkout-totals">
+                            <div class="total-line">
+                                <span>Subtotal:</span>
+                                <span id="checkoutSubtotal">$0.00</span>
+                            </div>
+                            <div class="total-line">
+                                <span>Tax:</span>
+                                <span id="checkoutTax">$0.00</span>
+                            </div>
+                            <div class="total-line">
+                                <span>Shipping:</span>
+                                <span id="checkoutShipping">$0.00</span>
+                            </div>
+                            <div class="total-line total">
+                                <span>Total:</span>
+                                <span id="checkoutTotal">$0.00</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Checkout Form -->
+                    <div class="checkout-form">
+                        <form id="paymentForm">
+                            <!-- Shipping Address -->
+                            <div class="checkout-section">
+                                <h3>Shipping Address</h3>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="shippingFirstName">First Name *</label>
+                                        <input type="text" id="shippingFirstName" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="shippingLastName">Last Name *</label>
+                                        <input type="text" id="shippingLastName" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shippingAddress">Address *</label>
+                                    <input type="text" id="shippingAddress" required>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="shippingCity">City *</label>
+                                        <input type="text" id="shippingCity" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="shippingState">State *</label>
+                                        <input type="text" id="shippingState" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="shippingZip">ZIP Code *</label>
+                                        <input type="text" id="shippingZip" required>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="shippingCountry">Country *</label>
+                                    <select id="shippingCountry" required>
+                                        <option value="US">United States</option>
+                                        <option value="CA">Canada</option>
+                                        <option value="GB">United Kingdom</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Payment Information -->
+                            <div class="checkout-section">
+                                <h3>Payment Information</h3>
+                                <div class="payment-element" id="payment-element">
+                                    <!-- Stripe Elements will create form elements here -->
+                                </div>
+                                <div id="payment-message" class="payment-message hidden"></div>
+                            </div>
+
+                            <div class="checkout-actions">
+                                <button type="button" class="btn btn-outline" id="cancelCheckout">Cancel</button>
+                                <button type="submit" class="btn btn-primary" id="submitPayment">
+                                    <span id="paymentButtonText">Complete Order</span>
+                                    <div class="spinner hidden" id="paymentSpinner"></div>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
