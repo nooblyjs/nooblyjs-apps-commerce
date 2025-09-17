@@ -21,15 +21,14 @@ const mime = require('mime-types');
  * @return {void}
  */
 module.exports = (options, eventEmitter, services) => {
-
   const app = options.express;
-  const app_path = options.path || 'warehouse';
+  const app_path = options.path || 'delivery';
   const { dataManager, filing, cache, logger, queue, search } = services;
  
   app.get(`/applications/${app_path}/api/status`, (req, res) => {
     res.json({ 
       status: 'running',
-      application: 'Wiki Management',
+      application: `${app_path} application`,
       version: '1.0.0',
       timestamp: new Date().toISOString()
     });
