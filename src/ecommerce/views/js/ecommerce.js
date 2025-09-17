@@ -19,16 +19,37 @@ class NooblyStore {
       limit: 20
     };
 
+    // Stripe integration
+    this.stripe = null;
+    this.stripeElements = null;
+    this.paymentElement = null;
+    this.clientSecret = null;
+
     this.init();
   }
 
   // Initialize the application
-  init() {
+  async init() {
     this.setupEventListeners();
+    await this.initializeStripe();
     this.loadInitialData();
     this.loadCart();
     this.updateCartDisplay();
     this.showPage('home');
+  }
+
+  // Initialize Stripe
+  async initializeStripe() {
+    try {
+      const response = await fetch(`${this.apiBase}/payments/config`);
+      const config = await response.json();
+
+      if (window.Stripe && config.publishableKey) {
+        this.stripe = Stripe(config.publishableKey);
+      }
+    } catch (error) {
+      console.error('Failed to initialize Stripe:', error);
+    }
   }
 
   // Generate unique session ID
@@ -172,6 +193,32 @@ class NooblyStore {
     const checkoutBtn = document.getElementById('checkoutBtn');
     if (checkoutBtn) {
       checkoutBtn.addEventListener('click', () => this.handleCheckout());
+    }
+
+    // Checkout modal controls
+    const checkoutModalClose = document.getElementById('checkoutModalClose');
+    const cancelCheckout = document.getElementById('cancelCheckout');
+    const paymentForm = document.getElementById('paymentForm');
+
+    if (checkoutModalClose) {
+      checkoutModalClose.addEventListener('click', () => this.closeCheckoutModal());
+    }
+
+    if (cancelCheckout) {
+      cancelCheckout.addEventListener('click', () => this.closeCheckoutModal());
+    }
+
+    if (paymentForm) {
+      paymentForm.addEventListener('submit', (e) => this.handlePaymentSubmit(e));
+    }
+
+    // Update overlay click to close checkout modal too
+    if (overlay) {
+      overlay.addEventListener('click', () => {
+        this.closeCart();
+        this.closeAuthModal();
+        this.closeCheckoutModal();
+      });
     }
   }
 
@@ -629,47 +676,284 @@ class NooblyStore {
       return;
     }
 
+    if (!this.stripe) {
+      this.showNotification('Payment system is not available. Please try again later.', 'error');
+      return;
+    }
+
+    // Close cart and open checkout modal
+    this.closeCart();
+    this.openCheckoutModal();
+  }
+
+  // Open checkout modal
+  openCheckoutModal() {
+    const modal = document.getElementById('checkoutModalOverlay');
+    const overlay = document.getElementById('overlay');
+
+    if (modal && overlay) {
+      // Populate checkout summary
+      this.populateCheckoutSummary();
+
+      // Pre-fill shipping form if user data is available
+      this.prefillShippingForm();
+
+      modal.classList.add('active');
+      overlay.classList.add('active');
+      document.body.classList.add('modal-open');
+
+      // Initialize Stripe Elements for payment
+      this.initializeStripeElements();
+    }
+  }
+
+  // Close checkout modal
+  closeCheckoutModal() {
+    const modal = document.getElementById('checkoutModalOverlay');
+    const overlay = document.getElementById('overlay');
+
+    if (modal && overlay) {
+      modal.classList.remove('active');
+      overlay.classList.remove('active');
+      document.body.classList.remove('modal-open');
+
+      // Clean up Stripe Elements
+      if (this.stripeElements) {
+        this.stripeElements = null;
+        this.paymentElement = null;
+        this.clientSecret = null;
+      }
+    }
+  }
+
+  // Populate checkout summary
+  populateCheckoutSummary() {
+    const checkoutItems = document.getElementById('checkoutItems');
+    const checkoutSubtotal = document.getElementById('checkoutSubtotal');
+    const checkoutTax = document.getElementById('checkoutTax');
+    const checkoutShipping = document.getElementById('checkoutShipping');
+    const checkoutTotal = document.getElementById('checkoutTotal');
+
+    if (!checkoutItems) return;
+
+    // Calculate totals
+    const subtotal = this.cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = subtotal * 0.08; // 8% tax
+    const shipping = subtotal > 100 ? 0 : 10; // Free shipping over $100
+    const total = subtotal + tax + shipping;
+
+    // Render cart items
+    const itemsHTML = this.cart.items.map(item => `
+      <div class="checkout-item">
+        <div class="item-details">
+          <h4>${item.name}</h4>
+          <p>Qty: ${item.quantity} × $${item.price.toFixed(2)}</p>
+        </div>
+        <div class="item-total">
+          $${(item.price * item.quantity).toFixed(2)}
+        </div>
+      </div>
+    `).join('');
+
+    checkoutItems.innerHTML = itemsHTML;
+
+    // Update totals
+    if (checkoutSubtotal) checkoutSubtotal.textContent = `$${subtotal.toFixed(2)}`;
+    if (checkoutTax) checkoutTax.textContent = `$${tax.toFixed(2)}`;
+    if (checkoutShipping) checkoutShipping.textContent = shipping === 0 ? 'Free' : `$${shipping.toFixed(2)}`;
+    if (checkoutTotal) checkoutTotal.textContent = `$${total.toFixed(2)}`;
+  }
+
+  // Pre-fill shipping form with user data
+  prefillShippingForm() {
+    if (!this.currentUser) return;
+
+    const firstName = document.getElementById('shippingFirstName');
+    const lastName = document.getElementById('shippingLastName');
+
+    if (firstName && this.currentUser.firstName) {
+      firstName.value = this.currentUser.firstName;
+    }
+    if (lastName && this.currentUser.lastName) {
+      lastName.value = this.currentUser.lastName;
+    }
+  }
+
+  // Initialize Stripe Elements
+  async initializeStripeElements() {
+    if (!this.stripe) return;
+
     try {
-      // Create order
-      const orderData = {
-        items: this.cart.items.map(item => ({
-          productId: item.productId,
-          variantId: item.variantId,
-          quantity: item.quantity,
-          price: item.price
-        })),
-        shippingAddress: {
-          // This would typically come from a form
-          firstName: this.currentUser.firstName,
-          lastName: this.currentUser.lastName,
-          address: '123 Main St',
-          city: 'Anytown',
-          state: 'ST',
-          zipCode: '12345',
-          country: 'US'
-        },
-        paymentMethod: {
-          type: 'credit_card',
-          // Simulated payment method
+      // Calculate total amount for payment intent
+      const subtotal = this.cart.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+      const tax = subtotal * 0.08;
+      const shipping = subtotal > 100 ? 0 : 10;
+      const total = subtotal + tax + shipping;
+
+      // Create payment intent
+      const response = await this.apiRequest('/payments/create-intent', {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: total,
+          currency: 'usd',
+          metadata: {
+            sessionId: this.cart.sessionId,
+            userId: this.currentUser.id
+          }
+        })
+      });
+
+      this.clientSecret = response.clientSecret;
+
+      // Create Stripe Elements
+      const appearance = {
+        theme: 'stripe',
+        variables: {
+          colorPrimary: '#0070f3',
+          colorBackground: '#ffffff',
+          colorText: '#1a1a1a',
+          colorDanger: '#df1b41',
+          fontFamily: 'Inter, system-ui, sans-serif',
+          spacingUnit: '4px',
+          borderRadius: '8px'
         }
       };
 
-      const response = await this.apiRequest('/orders', {
-        method: 'POST',
-        body: JSON.stringify(orderData)
+      this.stripeElements = this.stripe.elements({
+        appearance,
+        clientSecret: this.clientSecret
       });
 
-      // Clear cart
-      this.cart.items = [];
-      this.saveCart();
-      this.updateCartDisplay();
-      this.closeCart();
+      // Create payment element
+      this.paymentElement = this.stripeElements.create('payment');
+      this.paymentElement.mount('#payment-element');
 
-      this.showNotification(`Order placed successfully! Order number: ${response.order.orderNumber}`, 'success');
+      // Handle payment element events
+      this.paymentElement.on('ready', () => {
+        console.log('Payment element ready');
+      });
+
+      this.paymentElement.on('change', (event) => {
+        const messageContainer = document.getElementById('payment-message');
+        if (event.error) {
+          messageContainer.textContent = event.error.message;
+          messageContainer.classList.remove('hidden');
+        } else {
+          messageContainer.classList.add('hidden');
+        }
+      });
+
     } catch (error) {
-      console.error('Checkout failed:', error);
-      this.showNotification('Checkout failed. Please try again.', 'error');
+      console.error('Failed to initialize Stripe Elements:', error);
+      this.showNotification('Payment initialization failed. Please try again.', 'error');
     }
+  }
+
+  // Handle payment form submission
+  async handlePaymentSubmit(event) {
+    event.preventDefault();
+
+    if (!this.stripe || !this.stripeElements || !this.clientSecret) {
+      this.showNotification('Payment system not ready. Please try again.', 'error');
+      return;
+    }
+
+    // Show loading state
+    const submitButton = document.getElementById('submitPayment');
+    const buttonText = document.getElementById('paymentButtonText');
+    const spinner = document.getElementById('paymentSpinner');
+
+    if (submitButton) submitButton.disabled = true;
+    if (buttonText) buttonText.textContent = 'Processing...';
+    if (spinner) spinner.classList.remove('hidden');
+
+    try {
+      // Get shipping address from form
+      const shippingAddress = this.getShippingAddressFromForm();
+
+      if (!shippingAddress) {
+        throw new Error('Please fill in all required shipping information');
+      }
+
+      // Confirm payment with Stripe
+      const { error, paymentIntent } = await this.stripe.confirmPayment({
+        elements: this.stripeElements,
+        redirect: 'if_required'
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (paymentIntent.status === 'succeeded') {
+        // Payment successful, confirm order on backend
+        const orderData = {
+          paymentIntentId: paymentIntent.id,
+          items: this.cart.items.map(item => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            quantity: item.quantity,
+            price: item.price
+          })),
+          shippingAddress,
+          billingAddress: shippingAddress // Use same as shipping for now
+        };
+
+        const response = await this.apiRequest('/payments/confirm', {
+          method: 'POST',
+          body: JSON.stringify(orderData)
+        });
+
+        // Clear cart and close modal
+        this.cart.items = [];
+        this.saveCart();
+        this.updateCartDisplay();
+        this.closeCheckoutModal();
+
+        this.showNotification(`Order placed successfully! Order number: ${response.order.orderNumber}`, 'success');
+      }
+
+    } catch (error) {
+      console.error('Payment failed:', error);
+      this.showNotification(error.message || 'Payment failed. Please try again.', 'error');
+
+      // Show error message
+      const messageContainer = document.getElementById('payment-message');
+      if (messageContainer) {
+        messageContainer.textContent = error.message || 'Payment failed. Please try again.';
+        messageContainer.classList.remove('hidden');
+      }
+    } finally {
+      // Reset loading state
+      if (submitButton) submitButton.disabled = false;
+      if (buttonText) buttonText.textContent = 'Complete Order';
+      if (spinner) spinner.classList.add('hidden');
+    }
+  }
+
+  // Get shipping address from form
+  getShippingAddressFromForm() {
+    const firstName = document.getElementById('shippingFirstName')?.value?.trim();
+    const lastName = document.getElementById('shippingLastName')?.value?.trim();
+    const address = document.getElementById('shippingAddress')?.value?.trim();
+    const city = document.getElementById('shippingCity')?.value?.trim();
+    const state = document.getElementById('shippingState')?.value?.trim();
+    const zipCode = document.getElementById('shippingZip')?.value?.trim();
+    const country = document.getElementById('shippingCountry')?.value?.trim();
+
+    if (!firstName || !lastName || !address || !city || !state || !zipCode || !country) {
+      return null;
+    }
+
+    return {
+      firstName,
+      lastName,
+      address,
+      city,
+      state,
+      zipCode,
+      country
+    };
   }
 
   // Rendering functions

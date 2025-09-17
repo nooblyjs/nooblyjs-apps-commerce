@@ -46,6 +46,9 @@ class SeedService {
       // Seed sample products
       await this.seedSampleProducts();
 
+      // Seed sample content
+      await this.seedContent();
+
       this.logger.info('Data seeding completed successfully');
     } catch (error) {
       this.logger.error('Error during data seeding:', error);
@@ -438,6 +441,169 @@ class SeedService {
       return status;
     } catch (error) {
       this.logger.error('Error getting seeding status:', error);
+      throw error;
+    }
+  }
+
+  // Seed sample content
+  async seedContent() {
+    try {
+      const sampleContent = [
+        {
+          title: 'Welcome to NooblyJS Store',
+          content: 'Discover our premium collection of products designed for modern living. Shop with confidence knowing you\'re getting the best quality and service.',
+          type: 'hero',
+          slug: 'welcome-hero',
+          excerpt: 'Discover our premium collection of products designed for modern living.',
+          imageUrl: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
+          buttonText: 'Shop Now',
+          buttonUrl: '#products',
+          backgroundColor: '#2563eb',
+          textColor: '#ffffff',
+          active: true,
+          sortOrder: 1,
+          metadata: {
+            featured: true,
+            displayOnHomepage: true
+          }
+        },
+        {
+          title: 'Free Shipping Weekend',
+          content: 'Get free shipping on all orders this weekend! No minimum purchase required. Use code FREESHIP at checkout.',
+          type: 'banner',
+          slug: 'free-shipping-weekend',
+          excerpt: 'Get free shipping on all orders this weekend!',
+          buttonText: 'Shop Now',
+          buttonUrl: '#products',
+          backgroundColor: '#10b981',
+          textColor: '#ffffff',
+          active: true,
+          sortOrder: 2,
+          startDate: new Date().toISOString(),
+          endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days from now
+          metadata: {
+            promoCode: 'FREESHIP',
+            discount: 0,
+            freeShipping: true
+          }
+        },
+        {
+          title: 'New Electronics Collection',
+          content: 'Check out our latest electronics including smartphones, laptops, and smart home devices. All from trusted brands with warranty included.',
+          type: 'announcement',
+          slug: 'new-electronics-collection',
+          excerpt: 'Check out our latest electronics including smartphones, laptops, and smart home devices.',
+          imageUrl: 'https://images.unsplash.com/photo-1498049794561-7780e7231661?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
+          buttonText: 'View Electronics',
+          buttonUrl: '#category-electronics',
+          active: true,
+          sortOrder: 3,
+          metadata: {
+            category: 'Electronics',
+            featured: true
+          }
+        },
+        {
+          title: 'About Us',
+          content: `
+            <h2>Welcome to NooblyJS Store</h2>
+            <p>We're passionate about bringing you the finest products for modern living. Our carefully curated collection features premium brands and innovative designs that enhance your lifestyle.</p>
+
+            <h3>Our Mission</h3>
+            <p>To make premium products accessible to everyone, while providing an exceptional shopping experience that exceeds expectations.</p>
+
+            <h3>Why Choose Us?</h3>
+            <ul>
+              <li>Carefully curated product selection</li>
+              <li>Competitive pricing with regular promotions</li>
+              <li>Fast, reliable shipping</li>
+              <li>Excellent customer service</li>
+              <li>Easy returns and exchanges</li>
+            </ul>
+
+            <h3>Our Commitment</h3>
+            <p>We're committed to sustainability and ethical sourcing. We work with suppliers who share our values and maintain high standards for quality and environmental responsibility.</p>
+          `,
+          type: 'page',
+          slug: 'about-us',
+          excerpt: 'Learn more about NooblyJS Store and our commitment to quality and customer satisfaction.',
+          active: true,
+          sortOrder: 100,
+          metadata: {
+            showInFooter: true,
+            lastUpdated: new Date().toISOString()
+          }
+        },
+        {
+          title: 'Privacy Policy',
+          content: `
+            <h2>Privacy Policy</h2>
+            <p><strong>Last updated:</strong> ${new Date().toLocaleDateString()}</p>
+
+            <h3>Information We Collect</h3>
+            <p>We collect information you provide directly to us, such as when you create an account, make a purchase, or contact us for support.</p>
+
+            <h3>How We Use Your Information</h3>
+            <p>We use the information we collect to provide, maintain, and improve our services, process transactions, and communicate with you.</p>
+
+            <h3>Information Sharing</h3>
+            <p>We do not sell, trade, or otherwise transfer your personal information to third parties except as described in this privacy policy.</p>
+
+            <h3>Data Security</h3>
+            <p>We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.</p>
+
+            <h3>Contact Us</h3>
+            <p>If you have any questions about this privacy policy, please contact us at privacy@nooblyjs-store.com</p>
+          `,
+          type: 'page',
+          slug: 'privacy-policy',
+          excerpt: 'Our privacy policy explains how we collect, use, and protect your personal information.',
+          active: true,
+          sortOrder: 101,
+          metadata: {
+            showInFooter: true,
+            legal: true
+          }
+        },
+        {
+          title: 'Summer Sale - Up to 50% Off',
+          content: 'Don\'t miss our biggest sale of the year! Save up to 50% on selected items across all categories. Limited time offer.',
+          type: 'promotion',
+          slug: 'summer-sale-2024',
+          excerpt: 'Save up to 50% on selected items across all categories.',
+          imageUrl: 'https://images.unsplash.com/photo-1607083206968-13611e3d76db?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80',
+          buttonText: 'Shop Sale',
+          buttonUrl: '#sale',
+          backgroundColor: '#f59e0b',
+          textColor: '#ffffff',
+          active: true,
+          sortOrder: 4,
+          startDate: new Date().toISOString(),
+          endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+          metadata: {
+            maxDiscount: 50,
+            saleType: 'percentage',
+            categories: ['Electronics', 'Clothing', 'Home & Garden']
+          }
+        }
+      ];
+
+      for (const contentData of sampleContent) {
+        const contentItem = {
+          ...contentData,
+          views: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          createdBy: 'system'
+        };
+
+        const contentId = await this.dataServe.add('content', contentItem);
+        this.logger.info(`Content created: ${contentItem.title} (${contentId})`);
+      }
+
+      this.logger.info('Sample content seeded successfully');
+    } catch (error) {
+      this.logger.error('Error seeding content:', error);
       throw error;
     }
   }

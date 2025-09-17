@@ -11,6 +11,8 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
+const express = require('express');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Configure multer for file uploads
 const upload = multer({
@@ -140,9 +142,36 @@ module.exports = (options, eventEmitter, services) => {
   // Get product by ID
   app.get(`/applications/${app_path}/api/products/:id`, async (req, res) => {
     try {
-      const product = await dataServe.getByUuid('products', req.params.id);
+      logger.info(`Fetching product with ID: ${req.params.id}`);
 
-      if (!product || product.status !== 'active') {
+      // Try to find product by UUID first
+      let product = await dataServe.getByUuid('products', req.params.id);
+
+      // If not found by UUID, try to find by any field that might match
+      if (!product) {
+        logger.info(`Product not found by UUID, trying alternative searches...`);
+
+        // Try finding by ID property
+        const allProducts = await dataServe.jsonFind('products', () => true);
+        product = allProducts.find(p => p.id === req.params.id);
+
+        if (!product) {
+          // Try finding by SKU as a last resort
+          product = allProducts.find(p => p.sku === req.params.id);
+        }
+
+        logger.info(`Alternative search result: ${product ? 'found' : 'not found'}`);
+      }
+
+      logger.info(`Product found: ${product ? 'yes' : 'no'}, Status: ${product?.status || 'N/A'}`);
+
+      if (!product) {
+        logger.warn(`Product not found in database: ${req.params.id}`);
+        return res.status(404).json({ error: 'Product not found' });
+      }
+
+      if (product.status !== 'active') {
+        logger.warn(`Product found but not active: ${req.params.id}, status: ${product.status}`);
         return res.status(404).json({ error: 'Product not found' });
       }
 
@@ -171,6 +200,40 @@ module.exports = (options, eventEmitter, services) => {
     } catch (error) {
       logger.error('Error fetching categories:', error);
       res.status(500).json({ error: 'Failed to fetch categories' });
+    }
+  });
+
+  // Debug route to check products in database
+  app.get(`/applications/${app_path}/api/debug/products`, async (req, res) => {
+    try {
+      const allProducts = await dataServe.jsonFind('products', () => true);
+      const activeProducts = await dataServe.jsonFindByCriteria('products', { status: 'active' });
+
+      res.json({
+        total: allProducts.length,
+        active: activeProducts.length,
+        sampleProduct: allProducts[0] || null,
+        allProducts: allProducts.map(p => ({ id: p.id, name: p.name, status: p.status, sku: p.sku }))
+      });
+    } catch (error) {
+      logger.error('Error in debug route:', error);
+      res.status(500).json({ error: 'Debug failed', details: error.message });
+    }
+  });
+
+  // Trigger manual seeding (for debugging)
+  app.post(`/applications/${app_path}/api/debug/seed`, async (req, res) => {
+    try {
+      const SeedService = require('../services/seedService');
+      const seedService = new SeedService(services);
+
+      await seedService.seedAll();
+      logger.info('Manual seeding completed');
+
+      res.json({ message: 'Seeding completed successfully' });
+    } catch (error) {
+      logger.error('Error in manual seeding:', error);
+      res.status(500).json({ error: 'Seeding failed', details: error.message });
     }
   });
 
@@ -581,6 +644,446 @@ module.exports = (options, eventEmitter, services) => {
     } catch (error) {
       logger.error('Error tracking order:', error);
       res.status(500).json({ error: 'Failed to track order' });
+    }
+  });
+
+  // ===== STRIPE PAYMENT API =====
+
+  // Create payment intent
+  app.post(`/applications/${app_path}/api/payments/create-intent`, async (req, res) => {
+    try {
+      const { amount, currency = 'usd', metadata = {} } = req.body;
+
+      if (!amount || amount <= 0) {
+        return res.status(400).json({ error: 'Valid amount is required' });
+      }
+
+      // Create payment intent with Stripe
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(amount * 100), // Convert to cents
+        currency,
+        metadata: {
+          ...metadata,
+          source: 'nooblyjs-ecommerce'
+        },
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      });
+
+      res.json({
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id
+      });
+    } catch (error) {
+      logger.error('Error creating payment intent:', error);
+      res.status(500).json({ error: 'Failed to create payment intent' });
+    }
+  });
+
+  // Confirm payment and create order
+  app.post(`/applications/${app_path}/api/payments/confirm`, requireAuth, async (req, res) => {
+    try {
+      const {
+        paymentIntentId,
+        items,
+        shippingAddress,
+        billingAddress
+      } = req.body;
+
+      if (!paymentIntentId || !items || items.length === 0) {
+        return res.status(400).json({ error: 'Payment intent ID and items are required' });
+      }
+
+      // Retrieve payment intent from Stripe
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+      if (paymentIntent.status !== 'succeeded') {
+        return res.status(400).json({ error: 'Payment not confirmed' });
+      }
+
+      // Calculate order total
+      const subtotal = calculateOrderTotal(items);
+      const taxAmount = subtotal * 0.08; // 8% tax
+      const shippingCost = subtotal > 100 ? 0 : 10; // Free shipping over $100
+      const totalAmount = subtotal + taxAmount + shippingCost;
+
+      // Verify payment amount matches order total
+      const expectedAmount = Math.round(totalAmount * 100); // Convert to cents
+      if (paymentIntent.amount !== expectedAmount) {
+        return res.status(400).json({ error: 'Payment amount mismatch' });
+      }
+
+      // Generate order number
+      const orderNumber = generateOrderNumber();
+
+      // Create order
+      const order = {
+        orderNumber,
+        userId: req.user.id,
+        status: 'processing', // Payment confirmed, now processing
+        items,
+        subtotal: Math.round(subtotal * 100) / 100,
+        taxAmount: Math.round(taxAmount * 100) / 100,
+        shippingCost,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+        shippingAddress,
+        billingAddress: billingAddress || shippingAddress,
+        paymentMethod: {
+          type: 'stripe',
+          paymentIntentId: paymentIntent.id,
+          last4: paymentIntent.charges?.data[0]?.payment_method_details?.card?.last4 || null,
+          brand: paymentIntent.charges?.data[0]?.payment_method_details?.card?.brand || null
+        },
+        paymentStatus: 'paid',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      const orderUuid = await dataServe.add('orders', order);
+
+      // Store order items
+      for (const item of items) {
+        await dataServe.add('order_items', {
+          orderId: orderUuid,
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          totalPrice: item.price * item.quantity
+        });
+      }
+
+      // Update inventory
+      for (const item of items) {
+        try {
+          const inventoryRecords = await dataServe.jsonFindByPath('inventory', 'productId', item.productId);
+          if (inventoryRecords.length > 0) {
+            const inventoryRecord = inventoryRecords[0];
+            inventoryRecord.quantity = Math.max(0, inventoryRecord.quantity - item.quantity);
+            inventoryRecord.available = inventoryRecord.quantity - inventoryRecord.reserved;
+            inventoryRecord.lastUpdated = new Date().toISOString();
+
+            await dataServe.remove('inventory', inventoryRecord.id);
+            await dataServe.add('inventory', inventoryRecord);
+          }
+        } catch (invError) {
+          logger.error(`Error updating inventory for product ${item.productId}:`, invError);
+        }
+      }
+
+      // Send order confirmation notification
+      notifying.notify('order-events', {
+        type: 'order_paid',
+        orderId: orderUuid,
+        orderNumber,
+        userId: req.user.id,
+        totalAmount,
+        paymentIntentId
+      });
+
+      res.status(201).json({
+        order: { id: orderUuid, ...order },
+        message: 'Payment confirmed and order created successfully'
+      });
+    } catch (error) {
+      logger.error('Error confirming payment:', error);
+      res.status(500).json({ error: 'Failed to confirm payment' });
+    }
+  });
+
+  // Handle Stripe webhooks
+  app.post(`/applications/${app_path}/api/payments/webhook`, express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_test_secret';
+
+    let event;
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret);
+    } catch (err) {
+      logger.error('Webhook signature verification failed:', err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        const paymentIntent = event.data.object;
+        logger.info(`Payment ${paymentIntent.id} succeeded for amount ${paymentIntent.amount}`);
+        break;
+      case 'payment_intent.payment_failed':
+        const failedPayment = event.data.object;
+        logger.error(`Payment ${failedPayment.id} failed`);
+        break;
+      default:
+        logger.info(`Unhandled event type ${event.type}`);
+    }
+
+    res.json({received: true});
+  });
+
+  // Get Stripe publishable key
+  app.get(`/applications/${app_path}/api/payments/config`, (req, res) => {
+    res.json({
+      publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_51HdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHdSGkCqQXnHd'
+    });
+  });
+
+  // ===== CONTENT MANAGEMENT API =====
+
+  // Get all content items (public)
+  app.get(`/applications/${app_path}/api/content`, async (req, res) => {
+    try {
+      const { type, active } = req.query;
+
+      let content = await dataServe.jsonFindAll('content');
+
+      // Filter by type if specified
+      if (type) {
+        content = content.filter(item => item.type === type);
+      }
+
+      // Filter by active status if specified
+      if (active !== undefined) {
+        const isActive = active === 'true';
+        content = content.filter(item => item.active === isActive);
+      }
+
+      // Sort by sortOrder and createdAt
+      content.sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) {
+          return (a.sortOrder || 0) - (b.sortOrder || 0);
+        }
+        return new Date(b.createdAt) - new Date(a.createdAt);
+      });
+
+      res.json({ content });
+    } catch (error) {
+      logger.error('Error fetching content:', error);
+      res.status(500).json({ error: 'Failed to fetch content' });
+    }
+  });
+
+  // Get content item by ID (public)
+  app.get(`/applications/${app_path}/api/content/:id`, async (req, res) => {
+    try {
+      const content = await dataServe.jsonFindById('content', req.params.id);
+
+      if (!content) {
+        return res.status(404).json({ error: 'Content not found' });
+      }
+
+      res.json({ content });
+    } catch (error) {
+      logger.error('Error fetching content:', error);
+      res.status(500).json({ error: 'Failed to fetch content' });
+    }
+  });
+
+  // Create content item (admin only)
+  app.post(`/applications/${app_path}/api/content`, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const {
+        title,
+        content,
+        type,
+        slug,
+        excerpt,
+        imageUrl,
+        videoUrl,
+        buttonText,
+        buttonUrl,
+        backgroundColor,
+        textColor,
+        active,
+        sortOrder,
+        startDate,
+        endDate,
+        metadata
+      } = req.body;
+
+      if (!title || !type) {
+        return res.status(400).json({ error: 'Title and type are required' });
+      }
+
+      // Validate type
+      const validTypes = ['banner', 'page', 'announcement', 'promotion', 'hero'];
+      if (!validTypes.includes(type)) {
+        return res.status(400).json({ error: 'Invalid content type' });
+      }
+
+      // Generate slug if not provided
+      const contentSlug = slug || title.toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .trim();
+
+      // Check if slug already exists
+      const existingContent = await dataServe.jsonFindByPath('content', 'slug', contentSlug);
+      if (existingContent.length > 0) {
+        return res.status(400).json({ error: 'Content with this slug already exists' });
+      }
+
+      const contentItem = {
+        title,
+        content: content || '',
+        type,
+        slug: contentSlug,
+        excerpt: excerpt || '',
+        imageUrl: imageUrl || null,
+        videoUrl: videoUrl || null,
+        buttonText: buttonText || null,
+        buttonUrl: buttonUrl || null,
+        backgroundColor: backgroundColor || null,
+        textColor: textColor || null,
+        active: active !== undefined ? active : true,
+        sortOrder: sortOrder || 0,
+        startDate: startDate || null,
+        endDate: endDate || null,
+        metadata: metadata || {},
+        views: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: req.user.id
+      };
+
+      const contentId = await dataServe.add('content', contentItem);
+
+      logger.info(`Content created: ${title} (${contentId})`);
+
+      res.status(201).json({
+        content: { id: contentId, ...contentItem },
+        message: 'Content created successfully'
+      });
+    } catch (error) {
+      logger.error('Error creating content:', error);
+      res.status(500).json({ error: 'Failed to create content' });
+    }
+  });
+
+  // Update content item (admin only)
+  app.put(`/applications/${app_path}/api/content/:id`, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const existingContent = await dataServe.jsonFindById('content', req.params.id);
+
+      if (!existingContent) {
+        return res.status(404).json({ error: 'Content not found' });
+      }
+
+      const {
+        title,
+        content,
+        type,
+        slug,
+        excerpt,
+        imageUrl,
+        videoUrl,
+        buttonText,
+        buttonUrl,
+        backgroundColor,
+        textColor,
+        active,
+        sortOrder,
+        startDate,
+        endDate,
+        metadata
+      } = req.body;
+
+      // Validate type if provided
+      if (type) {
+        const validTypes = ['banner', 'page', 'announcement', 'promotion', 'hero'];
+        if (!validTypes.includes(type)) {
+          return res.status(400).json({ error: 'Invalid content type' });
+        }
+      }
+
+      // Check slug uniqueness if changed
+      if (slug && slug !== existingContent.slug) {
+        const duplicateContent = await dataServe.jsonFindByPath('content', 'slug', slug);
+        if (duplicateContent.length > 0) {
+          return res.status(400).json({ error: 'Content with this slug already exists' });
+        }
+      }
+
+      const updatedContent = {
+        ...existingContent,
+        title: title || existingContent.title,
+        content: content !== undefined ? content : existingContent.content,
+        type: type || existingContent.type,
+        slug: slug || existingContent.slug,
+        excerpt: excerpt !== undefined ? excerpt : existingContent.excerpt,
+        imageUrl: imageUrl !== undefined ? imageUrl : existingContent.imageUrl,
+        videoUrl: videoUrl !== undefined ? videoUrl : existingContent.videoUrl,
+        buttonText: buttonText !== undefined ? buttonText : existingContent.buttonText,
+        buttonUrl: buttonUrl !== undefined ? buttonUrl : existingContent.buttonUrl,
+        backgroundColor: backgroundColor !== undefined ? backgroundColor : existingContent.backgroundColor,
+        textColor: textColor !== undefined ? textColor : existingContent.textColor,
+        active: active !== undefined ? active : existingContent.active,
+        sortOrder: sortOrder !== undefined ? sortOrder : existingContent.sortOrder,
+        startDate: startDate !== undefined ? startDate : existingContent.startDate,
+        endDate: endDate !== undefined ? endDate : existingContent.endDate,
+        metadata: metadata !== undefined ? metadata : existingContent.metadata,
+        updatedAt: new Date().toISOString()
+      };
+
+      await dataServe.remove('content', req.params.id);
+      const contentId = await dataServe.add('content', updatedContent);
+
+      logger.info(`Content updated: ${updatedContent.title} (${contentId})`);
+
+      res.json({
+        content: { id: contentId, ...updatedContent },
+        message: 'Content updated successfully'
+      });
+    } catch (error) {
+      logger.error('Error updating content:', error);
+      res.status(500).json({ error: 'Failed to update content' });
+    }
+  });
+
+  // Delete content item (admin only)
+  app.delete(`/applications/${app_path}/api/content/:id`, requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const content = await dataServe.jsonFindById('content', req.params.id);
+
+      if (!content) {
+        return res.status(404).json({ error: 'Content not found' });
+      }
+
+      await dataServe.remove('content', req.params.id);
+
+      logger.info(`Content deleted: ${content.title} (${req.params.id})`);
+
+      res.json({ message: 'Content deleted successfully' });
+    } catch (error) {
+      logger.error('Error deleting content:', error);
+      res.status(500).json({ error: 'Failed to delete content' });
+    }
+  });
+
+  // Increment content views (public)
+  app.post(`/applications/${app_path}/api/content/:id/view`, async (req, res) => {
+    try {
+      const content = await dataServe.jsonFindById('content', req.params.id);
+
+      if (!content) {
+        return res.status(404).json({ error: 'Content not found' });
+      }
+
+      const updatedContent = {
+        ...content,
+        views: (content.views || 0) + 1,
+        lastViewedAt: new Date().toISOString()
+      };
+
+      await dataServe.remove('content', req.params.id);
+      await dataServe.add('content', updatedContent);
+
+      res.json({ message: 'View recorded' });
+    } catch (error) {
+      logger.error('Error recording view:', error);
+      res.status(500).json({ error: 'Failed to record view' });
     }
   });
 
