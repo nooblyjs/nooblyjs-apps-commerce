@@ -12,7 +12,7 @@ const jwt = require('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
 const express = require('express');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'None');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Configure multer for file uploads
 const upload = multer({
