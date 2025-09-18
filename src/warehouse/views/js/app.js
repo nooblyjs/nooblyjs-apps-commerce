@@ -17,8 +17,8 @@ class WarehouseDashboard {
     async init() {
         console.log('Initializing Warehouse Management System Dashboard...');
 
-        // Initialize Bootstrap components
-        this.loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+        // Initialize custom modal components
+        this.initializeModals();
 
         // Set up event listeners
         this.setupEventListeners();
@@ -30,6 +30,255 @@ class WarehouseDashboard {
         await this.loadDashboardData();
 
         console.log('Dashboard initialized successfully');
+    }
+
+    // Initialize custom modal components
+    initializeModals() {
+        // Create loading modal if it doesn't exist
+        if (!document.getElementById('loadingModal')) {
+            this.createLoadingModal();
+        }
+
+        // Set up modal close handlers
+        this.setupModalHandlers();
+    }
+
+    // Create loading modal dynamically
+    createLoadingModal() {
+        const modalHtml = `
+            <div class="modal-overlay hidden" id="loadingModal">
+                <div class="modal">
+                    <div class="modal-content">
+                        <div class="loading-spinner">
+                            <div class="spinner"></div>
+                        </div>
+                        <p id="loading-message">Loading...</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+    }
+
+    // Set up modal event handlers
+    setupModalHandlers() {
+        // Close modals when clicking outside
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal-overlay')) {
+                this.closeModal(e.target.id);
+            }
+        });
+
+        // Close modals with escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeAllModals();
+            }
+        });
+    }
+
+    // Custom modal methods
+    showModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+    }
+
+    closeModal(modalId) {
+        const modal = document.getElementById(modalId);
+        if (modal) {
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+    }
+
+    closeAllModals() {
+        const modals = document.querySelectorAll('.modal-overlay');
+        modals.forEach(modal => {
+            modal.classList.add('hidden');
+        });
+        document.body.style.overflow = '';
+    }
+
+    // Create the warehouse dashboard UI
+    createWarehouseUI() {
+        console.log('Creating warehouse dashboard UI...');
+
+        const warehouseHTML = `
+            <div class="main-container">
+                <!-- Sidebar -->
+                <nav class="sidebar" id="sidebar">
+                    <div class="sidebar-header">
+                        <div class="logo">
+                            <i class="fas fa-warehouse"></i>
+                            <span>Warehouse WMS</span>
+                        </div>
+                    </div>
+
+                    <div class="sidebar-menu">
+                        <div class="menu-section">
+                            <h3>Dashboard</h3>
+                            <a href="#" class="menu-item active" data-section="dashboard">
+                                <i class="fas fa-chart-line"></i>
+                                <span>Overview</span>
+                            </a>
+                        </div>
+
+                        <div class="menu-section">
+                            <h3>Operations</h3>
+                            <a href="#" class="menu-item" data-section="inventory">
+                                <i class="fas fa-boxes"></i>
+                                <span>Inventory</span>
+                            </a>
+                            <a href="#" class="menu-item" data-section="inbound">
+                                <i class="fas fa-truck-loading"></i>
+                                <span>Inbound</span>
+                            </a>
+                            <a href="#" class="menu-item" data-section="outbound">
+                                <i class="fas fa-shipping-fast"></i>
+                                <span>Outbound</span>
+                            </a>
+                        </div>
+
+                        <div class="menu-section">
+                            <h3>Management</h3>
+                            <a href="#" class="menu-item" data-section="resources">
+                                <i class="fas fa-users-cog"></i>
+                                <span>Resources</span>
+                            </a>
+                            <a href="#" class="menu-item" data-section="reports">
+                                <i class="fas fa-chart-bar"></i>
+                                <span>Reports</span>
+                            </a>
+                        </div>
+                    </div>
+                </nav>
+
+                <!-- Main Content -->
+                <main class="main-content">
+                    <header class="header">
+                        <div class="header-left">
+                            <h1 id="pageTitle">Warehouse Dashboard</h1>
+                        </div>
+                        <div class="header-right">
+                            <div class="header-actions">
+                                <span id="system-status" class="badge badge-warning">
+                                    <i class="fas fa-circle"></i> Initializing...
+                                </span>
+                                <button class="header-btn" id="refreshBtn" title="Refresh Data">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div class="page-content">
+                        <!-- Dashboard Section -->
+                        <div id="dashboard-section" class="content-section active">
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-boxes"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h3 id="total-products">0</h3>
+                                        <p>Total Products</p>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-truck-loading"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h3 id="active-shipments">0</h3>
+                                        <p>Active Shipments</p>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h3 id="low-stock-alerts">0</h3>
+                                        <p>Low Stock Alerts</p>
+                                    </div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <div class="stat-content">
+                                        <h3 id="active-staff">0</h3>
+                                        <p>Active Staff</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="dashboard-grid">
+                                <div class="dashboard-card">
+                                    <div class="card-header">
+                                        <h3>Recent Activities</h3>
+                                    </div>
+                                    <div class="card-content">
+                                        <div id="recent-activities">
+                                            <p class="text-muted">Loading activities...</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="dashboard-card">
+                                    <div class="card-header">
+                                        <h3>System Status</h3>
+                                    </div>
+                                    <div class="card-content">
+                                        <div id="system-info">
+                                            <p class="text-muted">Loading system information...</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Other sections would go here -->
+                        <div id="inventory-section" class="content-section">
+                            <h2>Inventory Management</h2>
+                            <p>Inventory management features coming soon...</p>
+                        </div>
+
+                        <div id="inbound-section" class="content-section">
+                            <h2>Inbound Operations</h2>
+                            <p>Inbound operations features coming soon...</p>
+                        </div>
+
+                        <div id="outbound-section" class="content-section">
+                            <h2>Outbound Operations</h2>
+                            <p>Outbound operations features coming soon...</p>
+                        </div>
+
+                        <div id="resources-section" class="content-section">
+                            <h2>Resource Management</h2>
+                            <p>Resource management features coming soon...</p>
+                        </div>
+
+                        <div id="reports-section" class="content-section">
+                            <h2>Reports & Analytics</h2>
+                            <p>Reports and analytics features coming soon...</p>
+                        </div>
+                    </div>
+                </main>
+            </div>
+        `;
+
+        // Replace body content with warehouse UI
+        document.body.innerHTML = warehouseHTML;
+
+        // Re-initialize after creating UI
+        this.setupEventListeners();
+
+        // Retry health check now that UI exists
+        setTimeout(() => this.checkSystemHealth(), 100);
     }
 
     setupEventListeners() {
@@ -53,16 +302,24 @@ class WarehouseDashboard {
 
     showSection(sectionName) {
         // Update navigation
-        document.querySelectorAll('.nav-link').forEach(link => {
+        document.querySelectorAll('.menu-item').forEach(link => {
             link.classList.remove('active');
         });
-        document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
+
+        const activeNavLink = document.querySelector(`[data-section="${sectionName}"]`);
+        if (activeNavLink) {
+            activeNavLink.classList.add('active');
+        }
 
         // Update content
         document.querySelectorAll('.content-section').forEach(section => {
-            section.classList.add('d-none');
+            section.classList.remove('active');
         });
-        document.getElementById(`${sectionName}-section`).classList.remove('d-none');
+
+        const targetSection = document.getElementById(`${sectionName}-section`);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
 
         // Update page title
         const titles = {
@@ -74,7 +331,11 @@ class WarehouseDashboard {
             delivery: 'Delivery & Fulfillment',
             reports: 'Analytics & Reports'
         };
-        document.getElementById('page-title').textContent = titles[sectionName] || 'Dashboard';
+
+        const pageTitle = document.getElementById('pageTitle');
+        if (pageTitle) {
+            pageTitle.textContent = titles[sectionName] || 'Dashboard';
+        }
 
         this.currentSection = sectionName;
 
@@ -113,18 +374,29 @@ class WarehouseDashboard {
             const response = await this.apiCall('/health');
             const statusElement = document.getElementById('system-status');
 
-            if (response.status === 'healthy') {
-                statusElement.className = 'badge bg-success me-3';
-                statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>System Online';
+            if (statusElement) {
+                if (response.status === 'healthy') {
+                    statusElement.className = 'badge badge-success';
+                    statusElement.innerHTML = '<i class="fas fa-circle"></i> System Online';
+                } else {
+                    statusElement.className = 'badge badge-danger';
+                    statusElement.innerHTML = '<i class="fas fa-circle"></i> System Issues';
+                }
             } else {
-                statusElement.className = 'badge bg-danger me-3';
-                statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>System Issues';
+                console.log('System status element not found, creating UI...');
+                this.createWarehouseUI();
             }
         } catch (error) {
             console.error('Health check failed:', error);
             const statusElement = document.getElementById('system-status');
-            statusElement.className = 'badge bg-warning me-3';
-            statusElement.innerHTML = '<i class="fas fa-circle me-1"></i>System Unknown';
+
+            if (statusElement) {
+                statusElement.className = 'badge badge-warning';
+                statusElement.innerHTML = '<i class="fas fa-circle"></i> System Unknown';
+            } else {
+                console.log('System status element not found, creating UI...');
+                this.createWarehouseUI();
+            }
         }
     }
 
@@ -146,10 +418,17 @@ class WarehouseDashboard {
     }
 
     updateDashboardMetrics(metrics) {
-        document.getElementById('total-products').textContent = metrics.totalProducts;
-        document.getElementById('active-orders').textContent = metrics.activeOrders;
-        document.getElementById('staff-online').textContent = metrics.staffOnline;
-        document.getElementById('shipments-today').textContent = metrics.shipmentsToday;
+        const updateElement = (id, value) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.textContent = value;
+            }
+        };
+
+        updateElement('total-products', metrics.totalProducts || 0);
+        updateElement('active-shipments', metrics.activeOrders || 0);
+        updateElement('active-staff', metrics.staffOnline || 0);
+        updateElement('low-stock-alerts', metrics.shipmentsToday || 0);
     }
 
     async loadInventoryData() {
@@ -573,12 +852,15 @@ class WarehouseDashboard {
     }
 
     showLoading(message = 'Loading...') {
-        document.getElementById('loading-message').textContent = message;
-        this.loadingModal.show();
+        const loadingMessage = document.getElementById('loading-message');
+        if (loadingMessage) {
+            loadingMessage.textContent = message;
+        }
+        this.showModal('loadingModal');
     }
 
     hideLoading() {
-        this.loadingModal.hide();
+        this.closeModal('loadingModal');
     }
 
     showAlert(message, type = 'info') {
@@ -652,7 +934,7 @@ class WarehouseDashboard {
             this.showAlert('Product added successfully!', 'success');
 
             // Close modal and refresh inventory
-            bootstrap.Modal.getInstance(document.getElementById('addProductModal')).hide();
+            this.closeModal('addProductModal');
             form.reset();
 
             if (this.currentSection === 'inventory') {

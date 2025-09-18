@@ -8,13 +8,108 @@ class AdminDashboard {
     this.apiBase = '/applications/ecommerce/api';
     this.currentSection = 'overview';
     this.currentUser = null;
+    this.authToken = localStorage.getItem('adminToken') || null;
   }
 
   // Initialize the admin dashboard
   async init() {
+    // Check if user is authenticated
+    if (!this.authToken) {
+      this.showLoginForm();
+      return;
+    }
+
     this.setupEventListeners();
     await this.loadInitialData();
     this.showSection('overview');
+  }
+
+  // Create authenticated fetch request
+  async authenticatedFetch(url, options = {}) {
+    const defaultOptions = {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+      },
+      ...options
+    };
+
+    // Add authorization header if token exists
+    if (this.authToken) {
+      defaultOptions.headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
+    const response = await fetch(url, defaultOptions);
+
+    // Handle 401 responses
+    if (response.status === 401) {
+      this.logout();
+      return null;
+    }
+
+    return response;
+  }
+
+  // Show login form
+  showLoginForm() {
+    const loginHtml = `
+      <div class="login-container">
+        <div class="login-form">
+          <h2>Admin Login</h2>
+          <form id="loginForm">
+            <div class="form-group">
+              <label for="email">Email</label>
+              <input type="email" id="email" name="email" required>
+            </div>
+            <div class="form-group">
+              <label for="password">Password</label>
+              <input type="password" id="password" name="password" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Login</button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.body.innerHTML = loginHtml;
+
+    // Add login form event listener
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await this.login();
+    });
+  }
+
+  // Handle login
+  async login() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      const response = await fetch(`${this.apiBase}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.user && data.user.isAdmin) {
+        this.authToken = data.token;
+        this.currentUser = data.user;
+        localStorage.setItem('adminToken', this.authToken);
+
+        // Reload the page to show admin interface
+        window.location.reload();
+      } else {
+        alert('Invalid credentials or insufficient permissions');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Login failed');
+    }
   }
 
   // Set up event listeners
@@ -124,11 +219,16 @@ class AdminDashboard {
   async loadStats() {
     try {
       const [salesResponse, ordersResponse, customersResponse, productsResponse] = await Promise.all([
-        fetch(`${this.apiBase}/admin/analytics/sales`),
-        fetch(`${this.apiBase}/admin/orders`),
-        fetch(`${this.apiBase}/admin/analytics/customers`),
-        fetch(`${this.apiBase}/products`)
+        this.authenticatedFetch(`${this.apiBase}/admin/analytics/sales`),
+        this.authenticatedFetch(`${this.apiBase}/admin/orders`),
+        this.authenticatedFetch(`${this.apiBase}/admin/analytics/customers`),
+        this.authenticatedFetch(`${this.apiBase}/products`)
       ]);
+
+      // Check if any request failed
+      if (!salesResponse || !ordersResponse || !customersResponse || !productsResponse) {
+        return;
+      }
 
       const salesData = await salesResponse.json();
       const ordersData = await ordersResponse.json();
@@ -153,7 +253,9 @@ class AdminDashboard {
   // Load recent orders for dashboard
   async loadRecentOrders() {
     try {
-      const response = await fetch(`${this.apiBase}/admin/orders?limit=5`);
+      const response = await this.authenticatedFetch(`${this.apiBase}/admin/orders?limit=5`);
+      if (!response) return;
+
       const data = await response.json();
 
       const tableBody = document.getElementById('recentOrdersTable');
@@ -176,7 +278,9 @@ class AdminDashboard {
   // Load low stock items
   async loadLowStock() {
     try {
-      const response = await fetch(`${this.apiBase}/admin/inventory?lowStock=10`);
+      const response = await this.authenticatedFetch(`${this.apiBase}/admin/inventory?lowStock=10`);
+      if (!response) return;
+
       const data = await response.json();
 
       const lowStockList = document.getElementById('lowStockList');
@@ -216,7 +320,9 @@ class AdminDashboard {
   // Load products
   async loadProducts() {
     try {
-      const response = await fetch(`${this.apiBase}/products`);
+      const response = await this.authenticatedFetch(`${this.apiBase}/products`);
+      if (!response) return;
+
       const data = await response.json();
 
       const tableBody = document.getElementById('productsTableBody');
@@ -254,7 +360,9 @@ class AdminDashboard {
   // Load orders
   async loadOrders() {
     try {
-      const response = await fetch(`${this.apiBase}/admin/orders`);
+      const response = await this.authenticatedFetch(`${this.apiBase}/admin/orders`);
+      if (!response) return;
+
       const data = await response.json();
 
       const tableBody = document.getElementById('ordersTableBody');
@@ -324,8 +432,13 @@ class AdminDashboard {
   // Logout function
   logout() {
     if (confirm('Are you sure you want to logout?')) {
-      // Implement logout logic
-      window.location.href = '/applications/ecommerce/';
+      // Clear authentication data
+      this.authToken = null;
+      this.currentUser = null;
+      localStorage.removeItem('adminToken');
+
+      // Redirect to login
+      window.location.reload();
     }
   }
 
