@@ -4,8 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NooblyJS Store - Premium Products for Modern Living</title>
-    <link rel="stylesheet" href="css/fallback.css">
-    <link rel="stylesheet" href="css/shadcn-ecommerce.css">
+    <link rel="stylesheet" href="/styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://js.stripe.com/v3/"></script>
@@ -291,7 +290,7 @@
     </div>
 
     <!-- Auth Modal -->
-    <div class="modal-overlay" id="authModalOverlay">
+    <div class="modal-overlay hidden" id="authModalOverlay">
         <div class="modal" id="authModal">
             <div class="modal-header">
                 <h2 id="authModalTitle">Login</h2>
@@ -343,7 +342,7 @@
     </div>
 
     <!-- Checkout Modal -->
-    <div class="modal-overlay" id="checkoutModalOverlay">
+    <div class="modal-overlay hidden" id="checkoutModalOverlay">
         <div class="modal large" id="checkoutModal">
             <div class="modal-header">
                 <h2>Secure Checkout</h2>
@@ -508,5 +507,50 @@
 
     <!-- Scripts -->
     <script src="js/shadcn-ecommerce.js"></script>
+    <script>
+        // Emergency modal close handlers
+        document.addEventListener('DOMContentLoaded', function() {
+            // Close modal function
+            function closeModal() {
+                // Hide all modal overlays
+                document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                    overlay.classList.add('hidden');
+                });
+                // Hide main overlay
+                const overlay = document.getElementById('overlay');
+                if (overlay) {
+                    overlay.classList.remove('active');
+                }
+            }
+
+            // Add click handlers for all modal close buttons
+            document.addEventListener('click', function(e) {
+                // Close button clicked
+                if (e.target.matches('.modal-close') || e.target.closest('.modal-close')) {
+                    e.preventDefault();
+                    closeModal();
+                }
+
+                // Modal overlay background clicked
+                if (e.target.matches('.modal-overlay')) {
+                    closeModal();
+                }
+            });
+
+            // Escape key handler
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    closeModal();
+                }
+            });
+
+            // Make sure modals start hidden
+            document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                if (!overlay.classList.contains('hidden')) {
+                    overlay.classList.add('hidden');
+                }
+            });
+        });
+    </script>
 </body>
 </html>
