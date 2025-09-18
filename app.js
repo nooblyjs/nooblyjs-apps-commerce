@@ -65,8 +65,8 @@ const workflow = serviceRegistry.workflow('memory');
 const warehouse = require('./src/warehouse/index');
 warehouse({express: app},eventEmitter,serviceRegistry);
 
-const ecommerce = require('./src/ecommerce/index');
-ecommerce({express: app},eventEmitter,serviceRegistry);
+// const ecommerce = require('./src/ecommerce/index');
+// ecommerce({express: app},eventEmitter,serviceRegistry);
 
 const deivery = require('./src/delivery/index');
 deivery({express: app},eventEmitter,serviceRegistry);
